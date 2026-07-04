@@ -147,7 +147,7 @@ export default function Customers() {
       const parts = str.split('|||');
       try {
         return { address: parts[0], items: JSON.parse(parts[1]) };
-      } catch (e) {
+      } catch {
         return { address: parts[0], items: [] };
       }
     }

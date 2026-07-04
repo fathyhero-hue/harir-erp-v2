@@ -1,16 +1,53 @@
-# React + Vite
+# حرير
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+واجهة إدارة وكتالوج لشركة حرير للأثاث والمفروشات. المشروع مبني بـ React و Vite ويتصل بقاعدة بيانات Supabase.
 
-Currently, two official plugins are available:
+## الأقسام الحالية
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- كتالوج عام للمنتجات وطلب المعاينة عبر واتساب.
+- لوحة إدارة للمخازن والعملاء وأوامر المصنع.
+- صفحات للموظفين والماليات والتقارير.
+- شاشة مشرف مصنع لمتابعة أوامر الشغل وسحب الخامات.
+- بوابة عميل لمتابعة بيانات العميل.
 
-## React Compiler
+## التشغيل المحلي
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. ثبت الحزم:
 
-## Expanding the Oxlint configuration
+```bash
+npm install
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+2. انسخ ملف البيئة:
+
+```bash
+copy .env.example .env.local
+```
+
+3. عدل القيم في `.env.local`:
+
+```bash
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_WHATSAPP_NUMBER=
+```
+
+4. شغل المشروع:
+
+```bash
+npm run dev
+```
+
+## ملاحظات أمان
+
+- مدخل `hero / 2026` الثابت اتشال من الكود.
+- مدخل الإدارة المحلي مقفول افتراضيا، ولا يتم تفعيله إلا من `.env.local`.
+- كلمات المرور الموجودة في جداول Supabase ما زالت تحتاج نقل لاحق إلى Supabase Auth أو تخزين آمن بكلمات مرور مشفرة.
+- لا تنشر ملف `.env.local`.
+
+## المرحلة القادمة المقترحة
+
+- تثبيت Supabase Auth والصلاحيات حسب الدور.
+- تحسين الواجهة على الموبايل.
+- توحيد الألوان والمكونات.
+- إضافة رسائل تحميل وأخطاء منظمة بدل التنبيهات المتفرقة.

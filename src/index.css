@@ -1,3 +1,107 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #020617;
+}
+
+.flex {
+  display: flex;
+}
+
+.grid {
+  display: grid;
+}
+
+.block {
+  display: block;
+}
+
+.hidden {
+  display: none;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.mb-6 {
+  margin-bottom: 1.5rem;
+}
+
+.space-y-6 > * + * {
+  margin-top: 1.5rem;
+}
+
+@media print {
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+
+  .print\:grid {
+    display: grid !important;
+  }
+
+  .print\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .print\:gap-10 {
+    gap: 2.5rem;
+  }
+
+  .print\:mt-12 {
+    margin-top: 3rem;
+  }
+
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+
+  .print\:text-center {
+    text-align: center;
+  }
+
+  .print\:text-sm {
+    font-size: 0.875rem;
+  }
+
+  .print\:font-bold {
+    font-weight: 700;
+  }
+
+  .print\:text-black {
+    color: #000 !important;
+  }
+
+  .print\:bg-white {
+    background: #fff !important;
+  }
+
+  .print\:bg-transparent {
+    background: transparent !important;
+  }
+
+  .print\:border {
+    border: 1px solid #d1d5db !important;
+  }
+
+  .print\:border-gray-300 {
+    border-color: #d1d5db !important;
+  }
+
+  .print\:border-none {
+    border: none !important;
+  }
+}

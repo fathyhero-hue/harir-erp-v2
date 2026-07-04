@@ -4,12 +4,18 @@ import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Factory from './pages/Factory';
 import Financials from './pages/Financials'; 
+import Sales from './pages/Sales';
 import Catalog from './pages/Catalog';
 import CatalogManager from './pages/CatalogManager';
 import Employees from './pages/Employees'; 
 import SupervisorPanel from './pages/SupervisorPanel'; 
 import ClientPortal from './pages/ClientPortal'; 
 import { supabase } from './supabaseClient';
+
+const SESSION_STORAGE_KEY = 'harir_user_session';
+const localAdminEnabled = import.meta.env.VITE_ENABLE_LOCAL_ADMIN === 'true';
+const localAdminUsername = import.meta.env.VITE_LOCAL_ADMIN_USERNAME;
+const localAdminPassword = import.meta.env.VITE_LOCAL_ADMIN_PASSWORD;
 
 export default function App() {
   const checkInitialPage = () => {
@@ -30,19 +36,26 @@ export default function App() {
   
   // لقط جلسة الدخول المحفوظة تلقائياً لمنع طلب تسجيل الدخول عند الـ Refresh
   const [userSession, setUserSession] = useState(() => {
-    const saved = localStorage.getItem('harir_user_session');
-    return saved ? JSON.parse(saved) : null;
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!saved) return null;
+
+    try {
+      return JSON.parse(saved);
+    } catch {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
   });
   
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
-  // 🕒 ميزة كابتن هيرو: نظام الوقت والتاريخ الفعلي الحي (Real-Time Dashboard Clock)
+  // 🕒 ميزة كابتن هيرو: نظام الوقت والتاريخ الفعلي الحي
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    // تحديث الوقت كل ثانية بالملي ريال تايم
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
@@ -50,13 +63,11 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // دالة لتنسيق التاريخ واليوم باللغة العربية الفصحى الاحترافية
   const formatArabicDate = (date) => {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     return date.toLocaleDateString('ar-EG', options);
   };
 
-  // دالة لتنسيق الساعة والدقائق والثواني بدقة
   const formatArabicTime = (date) => {
     return date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   };
@@ -94,19 +105,22 @@ export default function App() {
 
   const handleDashboardLogin = async (e) => {
     e.preventDefault();
+    setLoginError('');
 
-    // 🔒 حرس الأمان المحلي والمباشر لبيانات كابتن هيرو (تخطي فوري آمن)
-    if (usernameInput === 'hero' && passwordInput === '2026') {
-      const sessionData = { name: 'كابتن هيرو', username: 'hero', role: 'مدير عام' };
+    const username = usernameInput.trim();
+    const password = passwordInput;
+    const canUseLocalAdmin = localAdminEnabled && localAdminUsername && localAdminPassword;
+
+    if (canUseLocalAdmin && username === localAdminUsername && password === localAdminPassword) {
+      const sessionData = { name: 'مسؤول محلي', username, role: 'مدير عام' };
       setUserSession(sessionData);
-      localStorage.setItem('harir_user_session', JSON.stringify(sessionData));
-      
-      // توثيق النشاط في سجل العمليات الخلفي
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
+
       try {
         await supabase.from('activity_logs').insert([
-          { user_name: 'كابتن هيرو', role: 'مدير عام', action_type: 'تسجيل دخول', details: 'قام بالدخول الآمن السريع للوحة التحكم' }
+          { user_name: sessionData.name, role: sessionData.role, action_type: 'تسجيل دخول', details: 'تم تسجيل الدخول المحلي المصرح به من بيئة التطوير' }
         ]);
-      } catch (err) {}
+      } catch {}
 
       setShowLoginModal(false);
       setActivePage('inventory');
@@ -115,31 +129,31 @@ export default function App() {
       return; 
     }
 
-    // الفحص السحابي الطبيعي لباقي موظفي الإدارة والصلاحيات
+    // 🔥 الفحص السحابي الطبيعي لموظفي الإدارة والصلاحيات (تم التحديث لجدول system_users)
     const { data, error } = await supabase
-      .from('dashboard_users')
+      .from('system_users')
       .select('*')
-      .eq('username', usernameInput)
-      .eq('password', passwordInput)
-      .single();
+      .eq('username', username)
+      .eq('password', password)
+      .maybeSingle();
 
     if (!error && data) {
       const sessionData = { name: data.real_name, username: data.username, role: data.role };
       setUserSession(sessionData);
-      localStorage.setItem('harir_user_session', JSON.stringify(sessionData));
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
       
       try {
         await supabase.from('activity_logs').insert([
           { user_name: data.real_name, role: data.role, action_type: 'تسجيل دخول', details: 'قام بالدخول الموثق للوحة التحكم الحسابية' }
         ]);
-      } catch (err) {}
+      } catch {}
 
       setShowLoginModal(false);
       setActivePage('inventory');
       setUsernameInput('');
       setPasswordInput('');
     } else {
-      alert('❌ اسم المستخدم أو كلمة المرور غير صحيحة!');
+      setLoginError('اسم المستخدم أو كلمة المرور غير صحيحة.');
     }
   };
 
@@ -158,6 +172,8 @@ export default function App() {
         return <Catalog />;
       case 'inventory': 
         return isAuth ? <Inventory userRole={userSession.role} userSession={userSession} /> : <Catalog />;
+      case 'sales':
+        return isAuth ? <Sales userSession={userSession} /> : <Catalog />;
       case 'customers': 
         return isAuth ? <Customers userRole={userSession.role} userSession={userSession} /> : <Catalog />;
       case 'factory': 
@@ -176,7 +192,6 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'row-reverse', minHeight: '100vh', backgroundColor: '#020617', margin: 0, padding: 0 }}>
       
-      {/* عرض القائمة الجانبية فقط عند إتمام التوثيق للأدوار المسموحة */}
       {!isPublicCatalog && !isSupervisorView && !isClientView && isAuth && (
         <Sidebar activePage={activePage} setActivePage={setActivePage} userRole={userSession.role} />
       )}
@@ -188,7 +203,6 @@ export default function App() {
         backgroundColor: '#020617', color: 'white', minHeight: '100vh', boxSizing: 'border-box'
       }}>
         
-        {/* شريط الإدارة العلوي الفخم: يظهر فقط عند تسجيل الدخول، ويعرض الوقت والتاريخ لايف */}
         {!isPublicCatalog && !isSupervisorView && !isClientView && isAuth && (
           <div style={{
             display: 'flex',
@@ -207,7 +221,6 @@ export default function App() {
               <span style={{ color: '#64748b', fontSize: '12px' }}>({userSession.role})</span>
             </div>
             
-            {/* 🕒 شاشة الساعة والتاريخ الرقمية الحية الفاخرة بالثواني لايف */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: '14px', fontWeight: 'bold' }}>
               <div style={{ color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>📅</span>
@@ -229,7 +242,6 @@ export default function App() {
           </div>
         )}
 
-        {/* زر السحب والتأمين الفوري في أسفل الشاشة ويمسح كل التوثيقات */}
         {!isPublicCatalog && !isSupervisorView && !isClientView && isAuth && (
           <div style={{ position: 'fixed', bottom: '20px', left: '20px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 2000 }} className="print:hidden">
             <button 
@@ -238,10 +250,10 @@ export default function App() {
                   await supabase.from('activity_logs').insert([
                     { user_name: userSession.name, role: userSession.role, action_type: 'تسجيل خروج', details: 'قام بتسجيل الخروج وتأمين النظام بالكامل' }
                   ]);
-                } catch (err) {}
+                } catch {}
                 
                 setUserSession(null);
-                localStorage.removeItem('harir_user_session');
+                localStorage.removeItem(SESSION_STORAGE_KEY);
                 setActivePage('catalog');
                 window.history.pushState({}, document.title, '/');
               }} 
@@ -255,7 +267,6 @@ export default function App() {
         {renderPage()}
       </div>
 
-      {/* مودال تسجيل الدخول الفخم المنفصل وعزل المسارات السفلية */}
       {showLoginModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(2, 6, 23, 0.96)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, backdropFilter: 'blur(5px)' }}>
           <div style={{ backgroundColor: '#0f172a', padding: '30px', borderRadius: '12px', border: '1px solid #1e293b', width: '340px', textAlign: 'center' }} dir="rtl">
@@ -263,6 +274,11 @@ export default function App() {
             <h3 style={{ margin: '0 0 5px 0', color: '#f43f5e', fontWeight: 'bold' }}>بوابة موظفي شركة حرير</h3>
             <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 20px 0' }}>برجاء إدخال البيانات المعتمدة لمباشرة صلاحياتك</p>
             <form onSubmit={handleDashboardLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {loginError && (
+                <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '10px', borderRadius: '6px', fontSize: '12px' }}>
+                  {loginError}
+                </div>
+              )}
               <input 
                 type="text" 
                 placeholder="اسم المستخدم" 

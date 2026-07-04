@@ -35,7 +35,7 @@ export default function ClientPortal() {
     if (!str) return { address: '', items: [] };
     if (str.includes('|||')) {
       const parts = str.split('|||');
-      try { return { address: parts[0], items: JSON.parse(parts[1]) }; } catch (e) { return { address: parts[0], items: [] }; }
+      try { return { address: parts[0], items: JSON.parse(parts[1]) }; } catch { return { address: parts[0], items: [] }; }
     }
     return { address: str, items: [] };
   };

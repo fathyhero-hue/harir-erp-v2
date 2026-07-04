@@ -1,18 +1,20 @@
 import React from 'react';
 
 export default function Sidebar({ activePage, setActivePage, userRole }) {
-  // القائمة الكاملة لكل تبويبات السيستم وصلاحيات أدوارها المتوافقة بالملي مع App.jsx
+  // القائمة الكاملة لكل تبويبات السيستم وصلاحيات أدوارها
+  // تم ضبط الأدوار لتتطابق تماماً مع ما سيتم تسجيله في جدول system_users
   const allItems = [
-    { id: 'inventory', label: '📦 إدارة المخازن والمواد', icon: '🏪', roles: ['مدير عام', 'أمين مخزن'] },
-    { id: 'catalog-manager', label: '📐 حاسبة المقايسات والتسعير الذكي', icon: '📊', roles: ['مدير عام', 'أمين مخزن', 'حسابات'] },
-    { id: 'customers', label: '👥 العملاء والأقساط والفواتير', icon: '💳', roles: ['مدير عام', 'حسابات'] },
-    { id: 'factory', label: '🏭 أوامر الشغل بالمصنع', icon: '🛠️', roles: ['مدير عام', 'حسابات'] },
-    { id: 'financials', label: '📊 الحساب الجاري والتقارير المالية', icon: '📈', roles: ['مدير عام', 'حسابات'] },
+    { id: 'sales', label: '🧾 نقطة البيع والفواتير', icon: '🧾', roles: ['مدير عام', 'أمين مخازن', 'محاسب', 'مبيعات'] },
+    { id: 'inventory', label: '📦 إدارة المخازن والمواد', icon: '🏪', roles: ['مدير عام', 'أمين مخازن', 'مشرف إنتاج'] },
+    { id: 'catalog-manager', label: '📐 حاسبة المقايسات والتسعير الذكي', icon: '📊', roles: ['مدير عام', 'مبيعات', 'مشرف إنتاج'] },
+    { id: 'customers', label: '👥 العملاء والأقساط والفواتير', icon: '💳', roles: ['مدير عام', 'محاسب', 'مبيعات'] },
+    { id: 'factory', label: '🏭 أوامر الشغل بالمصنع', icon: '🛠️', roles: ['مدير عام', 'مشرف إنتاج'] },
+    { id: 'financials', label: '📊 الحساب الجاري والتقارير المالية', icon: '📈', roles: ['مدير عام', 'محاسب'] },
     { id: 'employees', label: '👑 التحكم بالموظفين وسجل الرقابة', icon: '🧰', roles: ['مدير عام'] },
-    { id: 'catalog', label: '✨ معاينة الكتالوج العام', icon: '🖼️', roles: ['مدير عام', 'أمين مخزن', 'حسابات'] },
+    { id: 'catalog', label: '✨ معاينة الكتالوج العام', icon: '🖼️', roles: ['مدير عام', 'أمين مخازن', 'محاسب', 'مبيعات', 'مشرف إنتاج'] },
   ];
 
-  // تصفية التبويبات بناءً على وظيفة الحساب المسجل حالياً لمنع التحكم في غير الاختصاص
+  // تصفية التبويبات بناءً على الدور (Role) المسجل في جلسة الدخول
   const filteredItems = allItems.filter(item => item.roles.includes(userRole || 'مدير عام'));
 
   return (
@@ -30,7 +32,7 @@ export default function Sidebar({ activePage, setActivePage, userRole }) {
       boxSizing: 'border-box',
       zIndex: 1000
     }}>
-      {/* رأس القائمة الجانبية مدمج به اللوجو الشفاف */}
+      {/* رأس القائمة الجانبية */}
       <div style={{ 
         textAlign: 'center', 
         marginBottom: '30px', 

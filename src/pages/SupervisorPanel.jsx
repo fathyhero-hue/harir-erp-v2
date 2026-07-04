@@ -5,6 +5,7 @@ export default function SupervisorPanel() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   
   const [orders, setOrders] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -24,16 +25,19 @@ export default function SupervisorPanel() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoginError('');
+
     const { data, error } = await supabase
       .from('factory_supervisors')
       .select('*')
-      .eq('username', username)
-      .eq('password', password);
+      .eq('username', username.trim())
+      .eq('password', password)
+      .maybeSingle();
 
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       setIsLoggedIn(true);
     } else {
-      alert('❌ اسم المستخدم أو الرقم السري للمشرف غير صحيح!');
+      setLoginError('اسم المستخدم أو الرقم السري للمشرف غير صحيح.');
     }
   };
 
@@ -109,6 +113,11 @@ export default function SupervisorPanel() {
             <h2 style={{ color: '#A04456', margin: 0 }}>شاشة مشرف مصنع حرير</h2>
             <small style={{ color: '#64748b' }}>سجل الدخول لإدارة الخامات وحساب الهالك</small>
           </div>
+          {loginError && (
+            <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '10px', borderRadius: '6px', fontSize: '12px', marginBottom: '12px', textAlign: 'center' }}>
+              {loginError}
+            </div>
+          )}
           <input type="text" placeholder="اسم مستخدم المشرف" value={username} onChange={e => setUsername(e.target.value)} required style={boxStyle} />
           <input type="password" placeholder="الرقم السري" value={password} onChange={e => setPassword(e.target.value)} required style={boxStyle} />
           <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#6B1D2F', border: 'none', color: 'white', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>دخول للمصنع 🏭</button>

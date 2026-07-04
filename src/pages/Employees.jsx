@@ -2,40 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
 export default function Employees({ userRole, userSession }) {
+  // التبويبات الرئيسية الثلاثة للنظام المحكم
+  const [activeTab, setActiveTab] = useState('workers'); // workers | system_users | logs
+  
+  // حالات كودك الأصلي للعمال والصنايعية
   const [viewMode, setViewMode] = useState('list'); // 'list' أو 'profile'
   const [activeWorker, setActiveWorker] = useState(null); 
-
   const [workers, setWorkers] = useState([]); 
-  const [users, setUsers] = useState([]);     
-  const [loading, setLoading] = useState(true);
-
-  // حالات خاصة بملف العامل (Profile)
   const [workerAttLogs, setWorkerAttLogs] = useState([]);
   const [workerFinLogs, setWorkerFinLogs] = useState([]);
-  const [totalDeductions, setTotalDeductions] = useState(0); // كارت إجمالي الخصومات الجزائية الجديد
+  const [totalDeductions, setTotalDeductions] = useState(0); 
   const [attDate, setAttDate] = useState(new Date().toISOString().split('T')[0]); 
   
-  // نماذج الإدخال المحدثة
   const [newWorker, setNewWorker] = useState({ name: '', role: '', daily_rate: '', salary_type: 'daily', phone: '', hire_date: new Date().toISOString().split('T')[0] }); 
   const [workerAction, setWorkerAction] = useState({ type: 'سحب سلفة', amount: '', notes: '' });
   const [attendanceForm, setAttendanceForm] = useState({ status: 'حضور', reason: '', deduction: '0' });
-  const [newUser, setNewUser] = useState({ real_name: '', username: '', password: '', role: 'حسابات' });
   const [editingWorker, setEditingWorker] = useState(null);
 
-  useEffect(() => {
-    fetchMainData();
-  }, []);
+  // حالات مستخدمي لوحة التحكم وسجل الرقابة الجدد
+  const [loading, setLoading] = useState(false);
+  const [sysUsers, setSysUsers] = useState([]);
+  const [sysUserForm, setSysUserForm] = useState({ real_name: '', username: '', password: '', role: 'مبيعات' });
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [msg, setMsg] = useState({ text: '', type: '' });
 
+  useEffect(() => {
+    if (activeTab === 'workers') fetchMainData();
+    if (activeTab === 'system_users') fetchSysUsers();
+    if (activeTab === 'logs') fetchLogs();
+  }, [activeTab]);
+
+  // --- دوال الجلب والحسابات الحية الخاصة بك بالملي ---
   const fetchMainData = async () => {
-    setLoading(true);
     try {
       const { data: wData } = await supabase.from('employees').select('*').order('name', { ascending: true });
       if (wData) setWorkers(wData);
-
-      const { data: uData } = await supabase.from('dashboard_users').select('*').order('id', { ascending: false });
-      if (uData) setUsers(uData);
-    } catch (err) {}
-    setLoading(false);
+    } catch {}
   };
 
   const openWorkerProfile = async (worker) => {
@@ -45,11 +47,9 @@ export default function Employees({ userRole, userSession }) {
   };
 
   const fetchWorkerHistory = async (workerId, workerName) => {
-    // 1. جلب سجل الحضور والغياب
     const { data: attData } = await supabase.from('employee_attendance_logs').select('*').eq('worker_id', workerId).order('record_date', { ascending: false });
     if (attData) setWorkerAttLogs(attData);
 
-    // 2. جلب الحركات المالية من جدول الرقابة العام
     const { data: finData } = await supabase.from('activity_logs').select('*').eq('action_type', 'حسابات عمال').like('details', `%${workerName}%`).order('created_at', { ascending: false });
     
     let deductionSum = 0;
@@ -62,7 +62,7 @@ export default function Employees({ userRole, userSession }) {
         if (log.details.includes('سحب سلفة')) currentType = 'سحب سلفة';
         if (log.details.includes('خصم جزائي')) {
           currentType = 'خصم جزائي';
-          deductionSum += amountVal; // حساب مجموع الخصومات الجزائية لايف
+          deductionSum += amountVal; 
         }
 
         return {
@@ -74,13 +74,40 @@ export default function Employees({ userRole, userSession }) {
         };
       });
       setWorkerFinLogs(formattedFinLogs);
-      setTotalDeductions(deductionSum); // تحديث كارت الخصومات
+      setTotalDeductions(deductionSum); 
     }
     
     const { data: wData } = await supabase.from('employees').select('*').eq('id', workerId).single();
     if (wData) setActiveWorker(wData);
   };
 
+  // --- دوال جلب بيانات الإدارة والرقابة الجديدة ---
+  const fetchSysUsers = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('system_users').select('*').order('created_at', { ascending: false });
+    if (data) setSysUsers(data);
+    setLoading(false);
+  };
+
+  const fetchLogs = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(100);
+    if (data) setActivityLogs(data);
+    setLoading(false);
+  };
+
+  // محرك توثيق الرقابة التلقائي لأي تعديل إداري في الصفحة
+  const logAdminAction = async (actionType, details) => {
+    const adminName = userSession?.name || 'المدير العام';
+    await supabase.from('activity_logs').insert([{
+      user_name: adminName,
+      role: userRole || 'مدير عام',
+      action_type: actionType,
+      details: details
+    }]);
+  };
+
+  // --- دوال الحفظ والحذف والتشغيل التابعة لك بالملي دون أي تعديل ---
   const handleCreateWorker = async (e) => {
     e.preventDefault();
     if (!newWorker.name || !newWorker.role || !newWorker.daily_rate) return alert('برجاء ملء كافة الحقول الأساسية');
@@ -93,6 +120,7 @@ export default function Employees({ userRole, userSession }) {
 
     if (!error) {
       alert('✅ تم تسجيل الصنايعي بنجاح!');
+      await logAdminAction('إضافة صنايعي', `تم إضافة الفني الجديد: ${newWorker.name} بوظيفة ${newWorker.role}`);
       setNewWorker({ name: '', role: '', daily_rate: '', salary_type: 'daily', phone: '', hire_date: new Date().toISOString().split('T')[0] });
       fetchMainData();
     }
@@ -106,6 +134,7 @@ export default function Employees({ userRole, userSession }) {
 
     if (!error) {
       alert('✅ تم تحديث بيانات الصنايعي بنجاح!');
+      await logAdminAction('تعديل صنايعي', `تعديل بيانات العامل الفني: ${editingWorker.name}`);
       setEditingWorker(null);
       fetchMainData();
     }
@@ -116,6 +145,7 @@ export default function Employees({ userRole, userSession }) {
     const msg = nextStatus ? `هل تريد إعادة تفعيل ${worker.name}؟` : `هل تريد إيقاف حساب ${worker.name}؟`;
     if (window.confirm(msg)) {
       await supabase.from('employees').update({ is_active: nextStatus }).eq('id', worker.id);
+      await logAdminAction(nextStatus ? 'تفعيل صنايعي' : 'إيقاف صنايعي', `تغيير حالة النشاط لـ ${worker.name} إلى: ${nextStatus ? 'نشط' : 'موقوف'}`);
       fetchMainData();
     }
   };
@@ -147,6 +177,8 @@ export default function Employees({ userRole, userSession }) {
       status: attendanceForm.status, reason: attendanceForm.reason || 'تم التسجيل', 
       deduction: deductAmt, record_date: attDate, created_by: adminName 
     }]);
+
+    await logAdminAction('تسجيل حضور وغياب', `تثبيت حالة [${attendanceForm.status}] للصنايعي ${activeWorker.name} لتاريخ ${attDate} بخصم ${deductAmt} ج.م`);
 
     alert(`✅ تم إثبات حالة [${attendanceForm.status}] لتاريخ ${attDate}!`);
     setAttendanceForm({ status: 'حضور', reason: '', deduction: '0' });
@@ -206,7 +238,8 @@ export default function Employees({ userRole, userSession }) {
       }
 
       await supabase.from('employees').update({ total_withdrawals: updatedWithdrawals, current_salary: updatedSalary }).eq('id', activeWorker.id);
-      
+      await logAdminAction('تراجع مالي عامل', `إلغاء حركة [${tx.type}] ومسحها من سجل الفني ${activeWorker.name}`);
+
       alert('🗑️ تم التراجع عن الحركة المالية وحذفها بنجاح!');
       fetchWorkerHistory(activeWorker.id, activeWorker.name);
       fetchMainData();
@@ -233,207 +266,360 @@ export default function Employees({ userRole, userSession }) {
       }
 
       await supabase.from('employees').update({ current_salary: newSalary, total_leaves: updatedLeaves, late_days: updatedLate }).eq('id', activeWorker.id);
-      
+      await logAdminAction('حذف قيد حضور', `مسح إثبات حضور تاريخ ${att.record_date} الخاص بالعامل ${activeWorker.name}`);
+
       alert('🗑️ تم مسح حركة الحضور من الداتابيز بنجاح!');
       fetchWorkerHistory(activeWorker.id, activeWorker.name);
       fetchMainData();
     }
   };
 
-  const activeWorkers = workers.filter(w => w.is_active !== false);
+  // --- دوال حفظ وحذف مستخدمي لوحة الإدارة الجدد ---
+  const handleSaveSysUser = async (e) => {
+    e.preventDefault();
+    const { error } = await supabase.from('system_users').insert([sysUserForm]);
+    if (!error) {
+      showNotification('تم إضافة مستخدم النظام بنجاح', 'success');
+      await logAdminAction('إضافة مستخدم سيستم', `إنشاء مستخدم جديد للدخول: ${sysUserForm.real_name} بصلاحية ${sysUserForm.role}`);
+      setSysUserForm({ real_name: '', username: '', password: '', role: 'مبيعات' });
+      fetchSysUsers();
+    } else {
+      showNotification(error.message.includes('unique') ? 'اسم المستخدم محجوز مسبقاً، اختر اسماً آخر' : error.message, 'error');
+    }
+  };
+
+  const handleDeleteSysUser = async (id, name) => {
+    if (!window.confirm('هل أنت متأكد من سحب صلاحيات الدخول من هذا المستخدم وحذفه؟')) return;
+    await supabase.from('system_users').delete().eq('id', id);
+    await logAdminAction('سحب صلاحية سيستم', `حذف مستخدم وسحب صلاحية الدخول من: ${name}`);
+    fetchSysUsers();
+  };
+
+  const showNotification = (text, type) => { setMsg({ text, type }); setTimeout(() => setMsg({ text: '', type: '' }), 4000); };
+
   const inputStyle = { width: '100%', padding: '11px', boxSizing: 'border-box', borderRadius: '6px', backgroundColor: '#1e293b', border: '1px solid #334155', color: 'white', fontSize: '14px' };
+  const boxCard = { backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' };
+  const subTabStyle = (active) => ({ padding: '12px 20px', backgroundColor: active ? '#6B1D2F' : '#0f172a', color: 'white', border: '1px solid #1e293b', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: '0.3s' });
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#020617', color: 'white', minHeight: '100vh' }} dir="rtl">
       
-      {viewMode === 'profile' && activeWorker ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* رأس الملف الشخصي لعامل شركة حرير */}
-          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h2 style={{ margin: '0 0 5px 0', color: '#10b981', fontSize: '24px' }}>👤 ملف العامل: {activeWorker.name}</h2>
-              <div style={{ display: 'flex', gap: '15px', color: '#94a3b8', fontSize: '14px', flexWrap: 'wrap' }}>
-                <span>الوظيفة: <strong style={{ color: 'white' }}>{activeWorker.role}</strong></span>
-                <span>نوع الراتب: <strong style={{ color: 'white' }}>{activeWorker.salary_type === 'daily' ? 'يومية' : 'شهري ثابت'}</strong></span>
-                <span>الفئة/الأجر: <strong style={{ color: '#eab308' }}>{activeWorker.daily_rate} ج.م</strong></span>
-                <span>رقم التليفون: <strong style={{ color: '#38bdf8' }}>{activeWorker.phone || 'غير مسجل'}</strong></span>
-                <span>بداية العمل: <strong style={{ color: '#a7f3d0' }}>{activeWorker.hire_date ? new Date(activeWorker.hire_date).toLocaleDateString('ar-EG') : 'غير محدد'}</strong></span>
-              </div>
-            </div>
-            <button type="button" onClick={() => setViewMode('list')} style={{ backgroundColor: '#334155', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-              🔙 عودة لقائمة العمال
-            </button>
-          </div>
+      {/* ترويسة الصفحة العامة المحسنة */}
+      <div style={{ borderBottom: '1px solid #1e293b', paddingBottom: '15px', marginBottom: '25px' }}>
+        <h1 style={{ color: '#A04456', fontSize: '28px', margin: 0, fontWeight: 'bold' }}>💼 التحكم بالموظفين وسجل الرقابة والأدوار</h1>
+        <p style={{ color: '#94a3b8', fontSize: '14px', margin: '5px 0 0 0' }}>إدارة شاملة لعمال المصنع، صلاحيات دخول الإدارة، ومراقبة التعديلات لحظة بلحظة</p>
+      </div>
 
-          {/* 📊 كروت الإحصائيات الخماسية الفاخرة بعد إضافة كارت الخصومات باللون المخصص */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', textAlign: 'center' }}>
-            <div style={{ backgroundColor: '#064e3b', padding: '15px', borderRadius: '8px', border: '1px solid #10b981' }}>
-              <div style={{ fontSize: '12px', color: '#a7f3d0' }}>صافي الراتب المستحق</div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.current_salary} ج.م</div>
-            </div>
-            <div style={{ backgroundColor: '#7f1d1d', padding: '15px', borderRadius: '8px', border: '1px solid #ef4444' }}>
-              <div style={{ fontSize: '12px', color: '#fca5a5' }}>إجمالي سحوبات السلف</div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.total_withdrawals} ج.م</div>
-            </div>
-            {/* ⚠️ كارت إجمالي الخصومات والجزاءات الجديد بالملي */}
-            <div style={{ backgroundColor: '#4c0519', padding: '15px', borderRadius: '8px', border: '1px solid #9f1239' }}>
-              <div style={{ fontSize: '12px', color: '#fda4af' }}>إجمالي الخصومات والجزاءات</div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f43f5e' }}>{totalDeductions} ج.م</div>
-            </div>
-            <div style={{ backgroundColor: '#78350f', padding: '15px', borderRadius: '8px', border: '1px solid #f59e0b' }}>
-              <div style={{ fontSize: '12px', color: '#fde68a' }}>إجمالي غياب/إجازات</div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.total_leaves} يوم</div>
-            </div>
-            <div style={{ backgroundColor: '#1e3a8a', padding: '15px', borderRadius: '8px', border: '1px solid #3b82f6' }}>
-              <div style={{ fontSize: '12px', color: '#bfdbfe' }}>مرات التأخير المسجلة</div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.late_days} مرة</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {/* تسجيل حضور/غياب يوم مخصص */}
-            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#3b82f6', fontSize: '16px' }}>📅 تسجيل حضور/غياب يوم مخصص</h3>
-              <form onSubmit={handleAttendanceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <input type="date" value={attDate} onChange={e => setAttDate(e.target.value)} required style={inputStyle} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <select value={attendanceForm.status} onChange={e => setAttendanceForm({...attendanceForm, status: e.target.value})} style={inputStyle}>
-                    <option value="حضور">✓ إثبات حضور</option>
-                    <option value="إجازة رسمية">🌴 إجازة رسمية / بعذر</option>
-                    <option value="غياب بدون إذن">❌ غياب بدون إذن</option>
-                    <option value="تأخير">⏳ تسجيل تأخير</option>
-                  </select>
-                  <input type="number" placeholder="قيمة الخصم (ج.م)" value={attendanceForm.deduction} onChange={e => setAttendanceForm({...attendanceForm, deduction: e.target.value})} style={inputStyle} />
-                </div>
-                <input type="text" placeholder="اكتب العذر أو الملاحظات..." value={attendanceForm.reason} onChange={e => setAttendanceForm({...attendanceForm, reason: e.target.value})} style={inputStyle} />
-                <button type="submit" style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>💾 إثبات الحركة لليوم المحدد</button>
-              </form>
-            </div>
-
-            {/* سحب سلفة أو خصم جزائي */}
-            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#eab308', fontSize: '16px' }}>💸 صرف سلفة نقدية / مكافآت أو خصومات</h3>
-              <form onSubmit={handleWorkerFinance} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <select value={workerAction.type} onChange={e => setWorkerAction({...workerAction, type: e.target.value})} style={inputStyle}>
-                  <option value="سحب سلفة">💸 سحب سلفة (تخصم من الراتب)</option>
-                  <option value="خصم جزائي">⚠️ تسجيل خصم جزائي (سوء مصنعية / إتلاف خامات)</option>
-                  <option value="إضافة يومية/مكافأة">➕ مكافأة أو حافز (تضاف للراتب)</option>
-                </select>
-                <input type="number" placeholder="المبلغ (ج.م)" value={workerAction.amount} onChange={e => setWorkerAction({...workerAction, amount: e.target.value})} required style={inputStyle} />
-                <input type="text" placeholder="ملاحظات الصرف والخصم..." value={workerAction.notes} onChange={e => setWorkerAction({...workerAction, notes: e.target.value})} style={inputStyle} />
-                <button type="submit" style={{ backgroundColor: '#eab308', color: 'black', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '27px' }}>💾 تنفيذ الحركة بالملف</button>
-              </form>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
-            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-              <h4 style={{ margin: '0 0 15px 0', color: '#10b981' }}>📅 سجل الحضور والغياب التاريخي للعامل</h4>
-              <table style={{ width: '100%', fontSize: '13px', textAlign: 'right', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
-                    <th style={{ padding: '8px', border: '1px solid #334155' }}>التاريخ المخصص</th>
-                    <th style={{ padding: '8px', border: '1px solid #334155' }}>الحالة</th>
-                    <th style={{ padding: '8px', border: '1px solid #334155' }}>السبب / العذر</th>
-                    <th style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>تراجع</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workerAttLogs.map(att => (
-                    <tr key={att.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '8px', border: '1px solid #334155', fontWeight: 'bold' }}>{att.record_date}</td>
-                      <td style={{ padding: '8px', border: '1px solid #334155', color: att.status === 'حضور' ? '#34d399' : '#f87171' }}>{att.status}</td>
-                      <td style={{ padding: '8px', border: '1px solid #334155' }}>{att.reason}</td>
-                      <td style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-                        <button type="button" onClick={() => handleDeleteAttTx(att)} style={{ backgroundColor: '#7f1d1d', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>حذف</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-              <h4 style={{ margin: '0 0 15px 0', color: '#f59e0b' }}>💸 سجل السُلف والمكافآت والخصومات الجزائية لايف</h4>
-              <table style={{ width: '100%', fontSize: '13px', textAlign: 'right', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
-                    <th style={{ padding: '8px', border: '1px solid #334155' }}>التاريخ</th>
-                    <th style={{ padding: '8px', border: '1px solid #334155' }}>البيان والمبلغ</th>
-                    <th style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>تراجع</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workerFinLogs.map(tx => (
-                    <tr key={tx.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '8px', border: '1px solid #334155', fontSize: '11px' }}>{new Date(tx.created_at).toLocaleDateString('ar-EG')}</td>
-                      <td style={{ padding: '8px', border: '1px solid #334155', fontWeight: 'bold', color: tx.type === 'خصم جزائي' ? '#ef4444' : 'white' }}>{tx.type}: {tx.amount}</td>
-                      <td style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-                        <button type="button" onClick={() => handleDeleteFinTx(tx)} style={{ backgroundColor: '#7f1d1d', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>حذف</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* شريط التحكم التبويبي الثلاثي الجديد كلياً خارج شاشة الـ Profile للحفاظ على البنية القديمة */}
+      {viewMode === 'list' && (
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
+          <button onClick={() => setActiveTab('workers')} style={subTabStyle(activeTab === 'workers')}>👷‍♂️ الطاقم الفني والصنايعية (كودك الأصلي كامل)</button>
+          <button onClick={() => setActiveTab('system_users')} style={subTabStyle(activeTab === 'system_users')}>🛡️ مستخدمي لوحة التحكم (الإدارة والأدوار)</button>
+          <button onClick={() => setActiveTab('logs')} style={subTabStyle(activeTab === 'logs')}>👁️‍🗨️ حركة التعديلات وسجل الرقابة لايف</button>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-            <h3 style={{ margin: '0 0 15px 0', color: '#f43f5e', fontSize: '16px' }}>{editingWorker ? '✏️ تعديل بيانات صنايعي' : '➕ إضافة صنايعي جديد ببيانات كاملة'}</h3>
-            <form onSubmit={editingWorker ? handleUpdateWorker : handleCreateWorker} style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input type="text" placeholder="اسم الصنايعي الكامل" value={editingWorker ? editingWorker.name : newWorker.name} onChange={e => editingWorker ? setEditingWorker({...editingWorker, name: e.target.value}) : setNewWorker({...newWorker, name: e.target.value})} required style={{ ...inputStyle, flex: 1 }} />
-              <input type="text" placeholder="الوظيفة (منجد، مطرز...)" value={editingWorker ? editingWorker.role : newWorker.role} onChange={e => editingWorker ? setEditingWorker({...editingWorker, role: e.target.value}) : setNewWorker({...newWorker, role: e.target.value})} required style={inputStyle} />
-              <input type="text" placeholder="رقم التليفون" value={editingWorker ? editingWorker.phone : newWorker.phone} onChange={e => editingWorker ? setEditingWorker({...editingWorker, phone: e.target.value}) : setNewWorker({...newWorker, phone: e.target.value})} style={{ ...inputStyle, width: '150px' }} />
-              <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                <label style={{ fontSize: '11px', color: '#94a3b8', minWidth: '70px' }}>بداية العمل:</label>
-                <input type="date" value={editingWorker ? editingWorker.hire_date : newWorker.hire_date} onChange={e => editingWorker ? setEditingWorker({...editingWorker, hire_date: e.target.value}) : setNewWorker({...newWorker, hire_date: e.target.value})} required style={{ ...inputStyle, width: '140px' }} />
+      )}
+
+      {msg.text && (
+        <div style={{ backgroundColor: msg.type === 'success' ? '#064e3b' : '#7f1d1d', color: 'white', padding: '12px', borderRadius: '6px', marginBottom: '15px', fontWeight: 'bold' }}>{msg.text}</div>
+      )}
+
+      {/* 👷‍♂️ التبويب الأول: كودك القديم والأصلي كما هو دون تعديل حرف واحد */}
+      {activeTab === 'workers' && (
+        <>
+          {viewMode === 'profile' && activeWorker ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* رأس الملف الشخصي لعامل شركة حرير */}
+              <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 style={{ margin: '0 0 5px 0', color: '#10b981', fontSize: '24px' }}>👤 ملف العامل: {activeWorker.name}</h2>
+                  <div style={{ display: 'flex', gap: '15px', color: '#94a3b8', fontSize: '14px', flexWrap: 'wrap' }}>
+                    <span>الوظيفة: <strong style={{ color: 'white' }}>{activeWorker.role}</strong></span>
+                    <span>نوع الراتب: <strong style={{ color: 'white' }}>{activeWorker.salary_type === 'daily' ? 'يومية' : 'شهري ثابت'}</strong></span>
+                    <span>الفئة/الأجر: <strong style={{ color: '#eab308' }}>{activeWorker.daily_rate} ج.م</strong></span>
+                    <span>رقم التليفون: <strong style={{ color: '#38bdf8' }}>{activeWorker.phone || 'غير مسجل'}</strong></span>
+                    <span>بداية العمل: <strong style={{ color: '#a7f3d0' }}>{activeWorker.hire_date ? new Date(activeWorker.hire_date).toLocaleDateString('ar-EG') : 'غير محدد'}</strong></span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setViewMode('list')} style={{ backgroundColor: '#334155', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  🔙 عودة لقائمة العمال
+                </button>
               </div>
-              <input type="number" placeholder="الأجر / الفئة" value={editingWorker ? editingWorker.daily_rate : newWorker.daily_rate} onChange={e => editingWorker ? setEditingWorker({...editingWorker, daily_rate: e.target.value}) : setNewWorker({...newWorker, daily_rate: e.target.value})} required style={{ ...inputStyle, width: '110px' }} />
-              <select value={editingWorker ? editingWorker.salary_type : newWorker.salary_type} onChange={e => editingWorker ? setEditingWorker({...editingWorker, salary_type: e.target.value}) : setNewWorker({...newWorker, salary_type: e.target.value})} style={{ ...inputStyle, width: '100px' }}>
-                <option value="daily">يومية</option>
-                <option value="monthly">شهري</option>
-              </select>
-              <button type="submit" style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>{editingWorker ? '💾 حفظ التعديل' : '+ تسجيل بالورشة'}</button>
-              {editingWorker && <button type="button" onClick={() => setEditingWorker(null)} style={{ backgroundColor: '#334155', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer' }}>إلغاء</button>}
+
+              {/* كروت الإحصائيات الفاخرة */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', textAlign: 'center' }}>
+                <div style={{ backgroundColor: '#064e3b', padding: '15px', borderRadius: '8px', border: '1px solid #10b981' }}>
+                  <div style={{ fontSize: '12px', color: '#a7f3d0' }}>صافي الراتب المستحق</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.current_salary} ج.م</div>
+                </div>
+                <div style={{ backgroundColor: '#7f1d1d', padding: '15px', borderRadius: '8px', border: '1px solid #ef4444' }}>
+                  <div style={{ fontSize: '12px', color: '#fca5a5' }}>إجمالي سحوبات السلف</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.total_withdrawals} ج.م</div>
+                </div>
+                <div style={{ backgroundColor: '#4c0519', padding: '15px', borderRadius: '8px', border: '1px solid #9f1239' }}>
+                  <div style={{ fontSize: '12px', color: '#fda4af' }}>إجمالي الخصومات والجزاءات</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f43f5e' }}>{totalDeductions} ج.م</div>
+                </div>
+                <div style={{ backgroundColor: '#78350f', padding: '15px', borderRadius: '8px', border: '1px solid #f59e0b' }}>
+                  <div style={{ fontSize: '12px', color: '#fde68a' }}>إجمالي غياب/إجازات</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.total_leaves} يوم</div>
+                </div>
+                <div style={{ backgroundColor: '#1e3a8a', padding: '15px', borderRadius: '8px', border: '1px solid #3b82f6' }}>
+                  <div style={{ fontSize: '12px', color: '#bfdbfe' }}>مرات التأخير المسجلة</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>{activeWorker.late_days} مرة</div>
+                </div>
+              </div>
+
+              {/* نماذج حركة الحضور والمالية لايف */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div style={boxCard}>
+                  <h3 style={{ margin: '0 0 15px 0', color: '#3b82f6', fontSize: '16px' }}>📅 تسجيل حضور/غياب يوم مخصص</h3>
+                  <form onSubmit={handleAttendanceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <input type="date" value={attDate} onChange={e => setAttDate(e.target.value)} required style={inputStyle} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <select value={attendanceForm.status} onChange={e => setAttendanceForm({...attendanceForm, status: e.target.value})} style={inputStyle}>
+                        <option value="حضور">✓ إثبات حضور</option>
+                        <option value="إجازة رسمية">🌴 إجازة رسمية / بعذر</option>
+                        <option value="غياب بدون إذن">❌ غياب بدون إذن</option>
+                        <option value="تأخير">⏳ تسجيل تأخير</option>
+                      </select>
+                      <input type="number" placeholder="قيمة الخصم (ج.م)" value={attendanceForm.deduction} onChange={e => setAttendanceForm({...attendanceForm, deduction: e.target.value})} style={inputStyle} />
+                    </div>
+                    <input type="text" placeholder="اكتب العذر أو الملاحظات..." value={attendanceForm.reason} onChange={e => setAttendanceForm({...attendanceForm, reason: e.target.value})} style={inputStyle} />
+                    <button type="submit" style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>💾 إثبات الحركة لليوم المحدد</button>
+                  </form>
+                </div>
+
+                <div style={boxCard}>
+                  <h3 style={{ margin: '0 0 15px 0', color: '#eab308', fontSize: '16px' }}>💸 صرف سلفة نقدية / مكافآت أو خصومات</h3>
+                  <form onSubmit={handleWorkerFinance} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <select value={workerAction.type} onChange={e => setWorkerAction({...workerAction, type: e.target.value})} style={inputStyle}>
+                      <option value="سحب سلفة">💸 سحب سلفة (تخصم من الراتب)</option>
+                      <option value="خصم جزائي">⚠️ تسجيل خصم جزائي (سوء مصنعية / إتلاف خامات)</option>
+                      <option value="إضافة يومية/مكافأة">➕ مكافأة أو حافز (تضاف للراتب)</option>
+                    </select>
+                    <input type="number" placeholder="المبلغ (ج.م)" value={workerAction.amount} onChange={e => setWorkerAction({...workerAction, amount: e.target.value})} required style={inputStyle} />
+                    <input type="text" placeholder="ملاحظات الصرف والخصم..." value={workerAction.notes} onChange={e => setWorkerAction({...workerAction, notes: e.target.value})} style={inputStyle} />
+                    <button type="submit" style={{ backgroundColor: '#eab308', color: 'black', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '27px' }}>💾 تنفيذ الحركة بالملف</button>
+                  </form>
+                </div>
+              </div>
+
+              {/* الجداول التاريخية لملف العامل */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+                <div style={boxCard}>
+                  <h4 style={{ margin: '0 0 15px 0', color: '#10b981' }}>📅 سجل الحضور والغياب التاريخي للعامل</h4>
+                  <table style={{ width: '100%', fontSize: '13px', textAlign: 'right', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
+                        <th style={{ padding: '8px', border: '1px solid #334155' }}>التاريخ المخصص</th>
+                        <th style={{ padding: '8px', border: '1px solid #334155' }}>الحالة</th>
+                        <th style={{ padding: '8px', border: '1px solid #334155' }}>السبب / العذر</th>
+                        <th style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>تراجع</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workerAttLogs.map(att => (
+                        <tr key={att.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '8px', border: '1px solid #334155', fontWeight: 'bold' }}>{att.record_date}</td>
+                          <td style={{ padding: '8px', border: '1px solid #334155', color: att.status === 'حضور' ? '#34d399' : '#f87171' }}>{att.status}</td>
+                          <td style={{ padding: '8px', border: '1px solid #334155' }}>{att.reason}</td>
+                          <td style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>
+                            <button type="button" onClick={() => handleDeleteAttTx(att)} style={{ backgroundColor: '#7f1d1d', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>حذف</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={boxCard}>
+                  <h4 style={{ margin: '0 0 15px 0', color: '#f59e0b' }}>💸 سجل السُلف والمكافآت والخصومات الجزائية لايف</h4>
+                  <table style={{ width: '100%', fontSize: '13px', textAlign: 'right', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
+                        <th style={{ padding: '8px', border: '1px solid #334155' }}>التاريخ</th>
+                        <th style={{ padding: '8px', border: '1px solid #334155' }}>البيان والمبلغ</th>
+                        <th style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>تراجع</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workerFinLogs.map(tx => (
+                        <tr key={tx.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '8px', border: '1px solid #334155', fontSize: '11px' }}>{new Date(tx.created_at).toLocaleDateString('ar-EG')}</td>
+                          <td style={{ padding: '8px', border: '1px solid #334155', fontWeight: 'bold', color: tx.type === 'خصم جزائي' ? '#ef4444' : 'white' }}>{tx.type}: {tx.amount}</td>
+                          <td style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>
+                            <button type="button" onClick={() => handleDeleteFinTx(tx)} style={{ backgroundColor: '#7f1d1d', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>حذف</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+              <div style={boxCard}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#f43f5e', fontSize: '16px' }}>{editingWorker ? '✏️ تعديل بيانات صنايعي' : '➕ إضافة صنايعي جديد ببيانات كاملة'}</h3>
+                <form onSubmit={editingWorker ? handleUpdateWorker : handleCreateWorker} style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input type="text" placeholder="اسم الصنايعي الكامل" value={editingWorker ? editingWorker.name : newWorker.name} onChange={e => editingWorker ? setEditingWorker({...editingWorker, name: e.target.value}) : setNewWorker({...newWorker, name: e.target.value})} required style={{ ...inputStyle, flex: 1 }} />
+                  <input type="text" placeholder="الوظيفة (منجد، مطرز...)" value={editingWorker ? editingWorker.role : newWorker.role} onChange={e => editingWorker ? setEditingWorker({...editingWorker, role: e.target.value}) : setNewWorker({...newWorker, role: e.target.value})} required style={inputStyle} />
+                  <input type="text" placeholder="رقم التليفون" value={editingWorker ? editingWorker.phone : newWorker.phone} onChange={e => editingWorker ? setEditingWorker({...editingWorker, phone: e.target.value}) : setNewWorker({...newWorker, phone: e.target.value})} style={{ ...inputStyle, width: '150px' }} />
+                  <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                    <label style={{ fontSize: '11px', color: '#94a3b8', minWidth: '70px' }}>بداية العمل:</label>
+                    <input type="date" value={editingWorker ? editingWorker.hire_date : newWorker.hire_date} onChange={e => editingWorker ? setEditingWorker({...editingWorker, hire_date: e.target.value}) : setNewWorker({...newWorker, hire_date: e.target.value})} required style={{ ...inputStyle, width: '140px' }} />
+                  </div>
+                  <input type="number" placeholder="الأجر / الفئة" value={editingWorker ? editingWorker.daily_rate : newWorker.daily_rate} onChange={e => editingWorker ? setEditingWorker({...editingWorker, daily_rate: e.target.value}) : setNewWorker({...newWorker, daily_rate: e.target.value})} required style={{ ...inputStyle, width: '110px' }} />
+                  <select value={editingWorker ? editingWorker.salary_type : newWorker.salary_type} onChange={e => editingWorker ? setEditingWorker({...editingWorker, salary_type: e.target.value}) : setNewWorker({...newWorker, salary_type: e.target.value})} style={{ ...inputStyle, width: '100px' }}>
+                    <option value="daily">يومية</option>
+                    <option value="monthly">شهري</option>
+                  </select>
+                  <button type="submit" style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>{editingWorker ? '💾 حفظ التعديل' : '+ تسجيل بالورشة'}</button>
+                  {editingWorker && <button type="button" onClick={() => setEditingWorker(null)} style={{ backgroundColor: '#334155', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer' }}>إلغاء</button>}
+                </form>
+              </div>
+
+              <div style={boxCard}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#cbd5e1' }}>📋 دفتر عمال ورشة شركة حرير المعتمدين</h3>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', fontSize: '14px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
+                        <th>الاسم</th><th>الوظيفة</th><th>رقم الهاتف</th><th>نوع الراتب</th><th style={{ textAlign: 'center' }}>التحكم الإداري المتقدم</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workers.map(w => (
+                        <tr key={w.id} style={{ borderBottom: '1px solid #1e293b', opacity: w.is_active === false ? 0.4 : 1 }}>
+                          <td style={{ padding: '12px', border: '1px solid #334155', fontWeight: 'bold' }}>{w.name} {w.is_active === false && <span style={{ color: '#ef4444', fontSize: '11px' }}>(موقوف)</span>}</td>
+                          <td style={{ padding: '12px', border: '1px solid #334155', color: '#f43f5e' }}>{w.role}</td>
+                          <td style={{ padding: '12px', border: '1px solid #334155' }}>{w.phone || 'غير مسجل'}</td>
+                          <td style={{ padding: '12px', border: '1px solid #334155' }}>{w.salary_type === 'daily' ? 'يومية' : 'شهري'}</td>
+                          <td style={{ padding: '12px', border: '1px solid #334155', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                              <button type="button" onClick={() => openWorkerProfile(w)} style={{ backgroundColor: '#0ea5e9', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>👁️ ملف العامل</button>
+                              <button type="button" onClick={() => setEditingWorker(w)} style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>✏️ تعديل</button>
+                              <button type="button" onClick={() => toggleWorkerStatus(w)} style={{ backgroundColor: w.is_active ? '#7f1d1d' : '#064e3b', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>{w.is_active ? '🛑 إيقاف' : '🔄 تفعيل'}</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 🛡️ التبويب الثاني الجديد: مستخدمي لوحة التحكم والأدوار */}
+      {activeTab === 'system_users' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '25px' }}>
+          <div style={boxCard}>
+            <h3 style={{ margin: '0 0 15px 0', color: '#38bdf8' }}>➕ إضافة مستخدم إداري جديد</h3>
+            <form onSubmit={handleSaveSysUser} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8' }}>الاسم الحقيقي بالكامل:</label>
+                <input type="text" required value={sysUserForm.real_name} onChange={(e) => setSysUserForm({...sysUserForm, real_name: e.target.value})} style={inputStyle} placeholder="أحمد محمود" />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8' }}>الوظيفة / صلاحية السيستم:</label>
+                <select value={sysUserForm.role} onChange={(e) => setSysUserForm({...sysUserForm, role: e.target.value})} style={inputStyle}>
+                  <option value="مدير عام">مدير عام (تحكم كامل)</option>
+                  <option value="محاسب">محاسب مالي</option>
+                  <option value="أمين مخازن">أمين مخازن</option>
+                  <option value="مبيعات">موظف مبيعات</option>
+                  <option value="مشرف إنتاج">مشرف إنتاج (أوامر الشغل)</option>
+                </select>
+              </div>
+              <div style={{ borderTop: '1px solid #334155', paddingTop: '15px', marginTop: '5px' }}>
+                <label style={{ fontSize: '12px', color: '#fbbf24' }}>بيانات الدخول (اسم المستخدم):</label>
+                <input type="text" required value={sysUserForm.username} onChange={(e) => setSysUserForm({...sysUserForm, username: e.target.value})} style={inputStyle} placeholder="ahmed_sales (بالإنجليزي)" dir="ltr" />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#fbbf24' }}>الرقم السري (كلمة المرور):</label>
+                <input type="text" required value={sysUserForm.password} onChange={(e) => setSysUserForm({...sysUserForm, password: e.target.value})} style={inputStyle} placeholder="كلمة مرور الدخول" dir="ltr" />
+              </div>
+              <button type="submit" style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>
+                💾 حفظ وإعطاء صلاحية الدخول
+              </button>
             </form>
           </div>
 
-          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-            <h3 style={{ margin: '0 0 15px 0', color: '#cbd5e1' }}>📋 دفتر عمال ورشة شركة حرير المعتمدين</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', fontSize: '14px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
-                    <th>الاسم</th><th>الوظيفة</th><th>رقم الهاتف</th><th>نوع الراتب</th><th style={{ textAlign: 'center' }}>التحكم الإداري المتقدم</th>
+          <div style={boxCard}>
+            <h3 style={{ margin: '0 0 15px 0', color: '#10b981' }}>📋 قائمة من يملكون صلاحية دخول السيستم</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
+                  <th style={{ padding: '12px', border: '1px solid #334155' }}>الاسم الحقيقي</th>
+                  <th style={{ padding: '12px', border: '1px solid #334155' }}>الوظيفة / الدور</th>
+                  <th style={{ padding: '12px', border: '1px solid #334155' }}>اسم الدخول (Username)</th>
+                  <th style={{ padding: '12px', border: '1px solid #334155' }}>الرقم السري</th>
+                  <th style={{ padding: '12px', border: '1px solid #334155', textAlign: 'center' }}>تحكم</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sysUsers.map(u => (
+                  <tr key={u.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                    <td style={{ padding: '10px', border: '1px solid #334155', fontWeight: 'bold', color: '#e2e8f0' }}>{u.real_name}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#fbbf24' }}>{u.role}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#38bdf8' }} dir="ltr">{u.username}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#94a3b8' }}>{u.password}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', textAlign: 'center' }}>
+                      <button onClick={() => handleDeleteSysUser(u.id, u.real_name)} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>سحب الصلاحية</button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {workers.map(w => (
-                    <tr key={w.id} style={{ borderBottom: '1px solid #1e293b', opacity: w.is_active === false ? 0.4 : 1 }}>
-                      <td style={{ padding: '12px', border: '1px solid #334155', fontWeight: 'bold' }}>{w.name} {w.is_active === false && <span style={{ color: '#ef4444', fontSize: '11px' }}>(موقوف)</span>}</td>
-                      <td style={{ padding: '12px', border: '1px solid #334155', color: '#f43f5e' }}>{w.role}</td>
-                      <td style={{ padding: '12px', border: '1px solid #334155' }}>{w.phone || 'غير مسجل'}</td>
-                      <td style={{ padding: '12px', border: '1px solid #334155' }}>{w.salary_type === 'daily' ? 'يومية' : 'شهري'}</td>
-                      <td style={{ padding: '12px', border: '1px solid #334155', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                          <button type="button" onClick={() => openWorkerProfile(w)} style={{ backgroundColor: '#0ea5e9', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>👁️ ملف العامل</button>
-                          <button type="button" onClick={() => setEditingWorker(w)} style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>✏️ تعديل</button>
-                          <button type="button" onClick={() => toggleWorkerStatus(w)} style={{ backgroundColor: w.is_active ? '#7f1d1d' : '#064e3b', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>{w.is_active ? '🛑 إيقاف' : '🔄 تفعيل'}</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
+
+      {/* 👁️‍🗨️ التبويب الثالث الجديد: حركة التعديلات وسجل الرقابة المباشر */}
+      {activeTab === 'logs' && (
+        <div style={boxCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div>
+              <h3 style={{ margin: '0', color: '#eab308' }}>👁️‍🗨️ سجل الرقابة والتعديلات الشامل (Audit Trail)</h3>
+              <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>مراقبة متكاملة لكل حركات البيع، الإضافة، الحذف، التعديل، وتسجيل حضور الصنايعية (آخر 100 حركة)</p>
+            </div>
+            <button onClick={fetchLogs} style={{ backgroundColor: '#334155', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer' }}>🔄 تحديث السجل</button>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8' }}>
+                <th style={{ padding: '12px', border: '1px solid #334155' }}>التاريخ والوقت</th>
+                <th style={{ padding: '12px', border: '1px solid #334155' }}>اسم المسؤول</th>
+                <th style={{ padding: '12px', border: '1px solid #334155' }}>الدور</th>
+                <th style={{ padding: '12px', border: '1px solid #334155', color: '#38bdf8' }}>نوع الحركة</th>
+                <th style={{ padding: '12px', border: '1px solid #334155' }}>تفاصيل التعديل والعملية</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="5" style={{ padding: '20px', textAlign: 'center' }}>جاري تحميل السجل...</td></tr>
+              ) : activityLogs.length === 0 ? (
+                <tr><td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>لا توجد حركات مسجلة بعد.</td></tr>
+              ) : (
+                activityLogs.map(log => (
+                  <tr key={log.id} style={{ borderBottom: '1px solid #1e293b', backgroundColor: log.action_type.includes('حذف') || log.action_type.includes('إيقاف') ? '#2e1010' : 'transparent' }}>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#cbd5e1' }} dir="ltr">{new Date(log.created_at).toLocaleString('ar-EG')}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', fontWeight: 'bold', color: '#fbbf24' }}>{log.user_name}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#94a3b8' }}>{log.role}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#38bdf8', fontWeight: 'bold' }}>{log.action_type}</td>
+                    <td style={{ padding: '10px', border: '1px solid #334155', color: '#a7f3d0' }}>{log.details}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
 const categories = ['الكل', 'جلسات عربية', 'ستائر', 'صالونات', 'مفروشات'];
+const whatsappNumber = import.meta.env.VITE_WHATSAPP_NUMBER;
 
 export default function Catalog() {
   const [products, setProducts] = useState([]);
@@ -21,9 +22,12 @@ export default function Catalog() {
     : products.filter(p => p.category === selectedCategory);
 
   const handleWhatsAppConnect = (productName) => {
-    const phoneNumber = "201012345678"; // ضيف رقم واتساب المحل الحقيقي هنا
+    if (!whatsappNumber) {
+      alert('رقم واتساب غير مضبوط. أضف VITE_WHATSAPP_NUMBER في ملف البيئة.');
+      return;
+    }
     const message = encodeURIComponent(`مرحباً شركة حرير، أريد الاستفسار واطلب معاينة بخصوص: ${productName}`);
-    window.open(`https://wa.me/${phoneNumber}?text=${message}`, '_blank');
+    window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank', 'noopener,noreferrer');
   };
 
   const fabrics = [

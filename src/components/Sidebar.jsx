@@ -6,12 +6,13 @@ export default function Sidebar({ activePage, setActivePage, userRole }) {
   const allItems = [
     { id: 'sales', label: '🧾 نقطة البيع والفواتير', icon: '🧾', roles: ['مدير عام', 'أمين مخازن', 'محاسب', 'مبيعات'] },
     { id: 'inventory', label: '📦 إدارة المخازن والمواد', icon: '🏪', roles: ['مدير عام', 'أمين مخازن', 'مشرف إنتاج'] },
-    { id: 'catalog-manager', label: '📐 حاسبة المقايسات والتسعير الذكي', icon: '📊', roles: ['مدير عام', 'مبيعات', 'مشرف إنتاج'] },
+    { id: 'smart-calculator', label: '📐 حاسبة المقايسات والتسعير الذكي', icon: '📊', roles: ['مدير عام', 'مبيعات', 'مشرف إنتاج'] },
+    { id: 'catalog-manager', label: '🖼️ التحكم الشامل في الكتالوج', icon: '⚙️', roles: ['مدير عام', 'مبيعات'] },
     { id: 'customers', label: '👥 العملاء والأقساط والفواتير', icon: '💳', roles: ['مدير عام', 'محاسب', 'مبيعات'] },
     { id: 'factory', label: '🏭 أوامر الشغل بالمصنع', icon: '🛠️', roles: ['مدير عام', 'مشرف إنتاج'] },
     { id: 'financials', label: '📊 الحساب الجاري والتقارير المالية', icon: '📈', roles: ['مدير عام', 'محاسب'] },
     { id: 'employees', label: '👑 التحكم بالموظفين وسجل الرقابة', icon: '🧰', roles: ['مدير عام'] },
-    { id: 'catalog', label: '✨ معاينة الكتالوج العام', icon: '🖼️', roles: ['مدير عام', 'أمين مخازن', 'محاسب', 'مبيعات', 'مشرف إنتاج'] },
+    { id: 'catalog', label: '✨ معاينة الكتالوج العام', icon: '✨', roles: ['مدير عام', 'أمين مخازن', 'محاسب', 'مبيعات', 'مشرف إنتاج'] },
   ];
 
   // تصفية التبويبات بناءً على الدور (Role) المسجل في جلسة الدخول
@@ -51,7 +52,7 @@ export default function Sidebar({ activePage, setActivePage, userRole }) {
       </div>
 
       {/* توليد أزرار القائمة المصفاة أمنياً */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
         {filteredItems.map((item) => {
           const isActive = activePage === item.id;
           return (
@@ -83,7 +84,7 @@ export default function Sidebar({ activePage, setActivePage, userRole }) {
       </div>
 
       {/* حقوق النظام */}
-      <div style={{ textAlign: 'center', borderTop: '1px solid #1e293b', paddingTop: '15px', color: '#475569', fontSize: '10px' }}>
+      <div style={{ textAlign: 'center', borderTop: '1px solid #1e293b', paddingTop: '15px', color: '#475569', fontSize: '10px', marginTop: 'auto' }}>
         جميع الحقوق محفوظة لكابتن هيرو © 2026
       </div>
     </div>

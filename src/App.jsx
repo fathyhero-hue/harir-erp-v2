@@ -7,6 +7,7 @@ import Financials from './pages/Financials';
 import Sales from './pages/Sales';
 import Catalog from './pages/Catalog';
 import CatalogManager from './pages/CatalogManager';
+import SmartCalculator from './pages/SmartCalculator'; // تم إضافة استيراد الحاسبة الذكية
 import Employees from './pages/Employees'; 
 import SupervisorPanel from './pages/SupervisorPanel'; 
 import ClientPortal from './pages/ClientPortal'; 
@@ -184,6 +185,8 @@ export default function App() {
         return isAuth ? <Financials userRole={userSession.role} userSession={userSession} /> : <Catalog />;
       case 'catalog-manager': 
         return isAuth ? <CatalogManager userRole={userSession.role} userSession={userSession} /> : <Catalog />;
+      case 'smart-calculator': // تم إضافة مسار الحاسبة الذكية 
+        return isAuth ? <SmartCalculator userRole={userSession.role} userSession={userSession} /> : <Catalog />;
       default: 
         return <Catalog />;
     }

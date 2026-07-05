@@ -2,184 +2,252 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
 export default function CatalogManager() {
-  const [inventoryItems, setInventoryItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('products'); // 'products', 'hero', 'fabrics'
+  const [loading, setLoading] = useState(false);
+  
+  // داتا الموديلات
+  const [items, setItems] = useState([]);
+  const categories = ['المرابيع والجلسات العربية', 'ستائر', 'صالونات', 'مفروشات'];
+  const [productData, setProductData] = useState({ name: '', category: 'المرابيع والجلسات العربية', description: '', price: '', discount_price: '', is_offer: false, video_url: '' });
+  const [productFile, setProductFile] = useState(null);
+  const [productPreview, setProductPreview] = useState('');
 
-  // مدخلات المقايسة الذكية
-  const [quote, setQuote] = useState({
-    wood_id: '',
-    sponge_id: '',
-    fabric_id: '',
-    meters: '',
-    accessories_cost: '0',
-    labor_cost: '0'
-  });
+  // داتا الهيدر
+  const [heroImages, setHeroImages] = useState([]);
+  const [heroFile, setHeroFile] = useState(null);
+  const [heroPreview, setHeroPreview] = useState('');
 
-  const [result, setResult] = useState(null);
+  // داتا الأقمشة
+  const [fabrics, setFabrics] = useState([]);
+  const [fabricData, setFabricData] = useState({ name: '', colors: '' });
+  const [fabricFile, setFabricFile] = useState(null);
+  const [fabricPreview, setFabricPreview] = useState('');
 
   useEffect(() => {
-    fetchInventoryForPricing();
+    fetchData();
   }, []);
 
-  // جلب الخامات المتاحة في المخزن لايف مع أسعارها
-  const fetchInventoryForPricing = async () => {
-    setLoading(true);
-    // تأكد أن جدول المخزن يحتوي على حقل السعر (مثلاً باسم cost_price أو price)
-    // هنا سنفترض أن الحقل المخزن فيه سعر التكلفة هو price أو نقوم بجلبه ديناميكياً
-    const { data, error } = await supabase
-      .from('inventory')
-      .select('id, name, quantity, price'); // يمكنك تعديل اسم حقل السعر هنا ليطابق قاعدة بياناتك (مثال: cost_price)
-    
-    if (!error && data) {
-      setInventoryItems(data);
-    }
-    setLoading(false);
+  const fetchData = async () => {
+    const [catRes, heroRes, fabRes] = await Promise.all([
+      supabase.from('catalog').select('*').order('id', { ascending: false }),
+      supabase.from('hero_images').select('*').order('id', { ascending: false }),
+      supabase.from('fabrics').select('*').order('id', { ascending: false })
+    ]);
+    if (catRes.data) setItems(catRes.data);
+    if (heroRes.data) setHeroImages(heroRes.data);
+    if (fabRes.data) setFabrics(fabRes.data);
   };
 
-  const handleCalculateQuote = (e) => {
-    e.preventDefault();
-    const m = Number(quote.meters);
-    if (!m || m <= 0) return alert('الرجاء كتابة عدد الأمتار المطلوب أولاً');
-
-    // لقط أسعار الخامات المختارة من المخزن لايف
-    const selectedWood = inventoryItems.find(item => item.id === Number(quote.wood_id));
-    const selectedSponge = inventoryItems.find(item => item.id === Number(quote.sponge_id));
-    const selectedFabric = inventoryItems.find(item => item.id === Number(quote.fabric_id));
-
-    // استخراج الأسعار (لو مش محدد خامة أو سعرها مش مكتوب بنعتبره 0)
-    const woodPrice = selectedWood ? Number(selectedWood.price || 0) : 0;
-    const spongePrice = selectedSponge ? Number(selectedSponge.price || 0) : 0;
-    const fabricPrice = selectedFabric ? Number(selectedFabric.price || 0) : 0;
-
-    // 1. حساب تكلفة الخامات لكل متر بناءً على أسعار المخزن الحالية
-    const materialsCostPerMeter = woodPrice + spongePrice + fabricPrice;
-    const totalMaterialsCost = materialsCostPerMeter * m;
-
-    // 2. إجمالي التكلفة الكلية = الخامات + الاكسسوارات + مصنعية الصنايعي
-    const totalCost = totalMaterialsCost + Number(quote.accessories_cost) + Number(quote.labor_cost);
-
-    // 3. حساب سعر البيع العادل للزبون (التكلفة + هامش ربح 35% لشركة حرير)
-    const profitMargin = 0.35;
-    const fairSellingPrice = Math.round(totalCost * (1 + profitMargin));
-
-    setResult({
-      woodName: selectedWood ? selectedWood.name : 'غير محدد',
-      spongeName: selectedSponge ? selectedSponge.name : 'غير محدد',
-      fabricName: selectedFabric ? selectedFabric.name : 'غير محدد',
-      materialsCost: totalMaterialsCost,
-      totalCost: totalCost,
-      sellingPrice: fairSellingPrice,
-      profit: fairSellingPrice - totalCost
+  // تصغير المقاسات
+  const resizeImage = (file, maxWidth = 1000, maxHeight = 1000) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width, height = img.height;
+          if (width > height) { if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; } } 
+          else { if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; } }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: 'image/webp' }));
+          }, 'image/webp', 0.8);
+        };
+      };
     });
   };
 
-  const inputStyle = { width: '100%', padding: '12px', boxSizing: 'border-box', borderRadius: '8px', backgroundColor: '#1e293b', border: '1px solid #334155', color: 'white', marginTop: '5px' };
+  const uploadFile = async (file) => {
+    const fileName = `${Math.random()}.webp`;
+    const { error } = await supabase.storage.from('catalog_images').upload(fileName, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from('catalog_images').getPublicUrl(fileName);
+    return data.publicUrl;
+  };
 
-  if (loading) return <div style={{ color: 'white', textAlign: 'center', paddingTop: '100px' }}>⏳ جاري ربط الحاسبة بأسعار المخزن الحية...</div>;
+  // ============ معالجة المنتجات ============
+  const handleProductSubmit = async (e) => {
+    e.preventDefault();
+    if (!productData.name || (!productFile && !productData.video_url)) return alert('أدخل الاسم وصورة أو فيديو');
+    setLoading(true);
+    try {
+      let imgUrl = null;
+      if (productFile) imgUrl = await uploadFile(productFile);
+      
+      const { error } = await supabase.from('catalog').insert([{
+        name: productData.name, category: productData.category, description: productData.description,
+        price: productData.price || null, discount_price: productData.discount_price || null,
+        is_offer: productData.is_offer, video_url: productData.video_url, image_url: imgUrl
+      }]);
+      if (error) throw error;
+      setProductData({ name: '', category: 'المرابيع والجلسات العربية', description: '', price: '', discount_price: '', is_offer: false, video_url: '' });
+      setProductFile(null); setProductPreview(''); fetchData(); alert('تم إضافة الموديل بنجاح');
+    } catch (err) { alert('خطأ: ' + err.message); }
+    setLoading(false);
+  };
+
+  // ============ معالجة الهيدر ============
+  const handleHeroSubmit = async (e) => {
+    e.preventDefault();
+    if (!heroFile) return alert('الرجاء اختيار صورة');
+    setLoading(true);
+    try {
+      const imgUrl = await uploadFile(heroFile);
+      const { error } = await supabase.from('hero_images').insert([{ image_url: imgUrl }]);
+      if (error) throw error;
+      setHeroFile(null); setHeroPreview(''); fetchData(); alert('تم إضافة صورة الهيدر');
+    } catch (err) { alert('خطأ: ' + err.message); }
+    setLoading(false);
+  };
+
+  // ============ معالجة الأقمشة ============
+  const handleFabricSubmit = async (e) => {
+    e.preventDefault();
+    if (!fabricData.name || !fabricFile) return alert('الرجاء إدخال الاسم وصورة القماش');
+    setLoading(true);
+    try {
+      const imgUrl = await uploadFile(fabricFile);
+      const { error } = await supabase.from('fabrics').insert([{
+        name: fabricData.name,
+        colors: fabricData.colors, // مثال: #ff0000,#00ff00
+        image_url: imgUrl
+      }]);
+      if (error) throw error;
+      setFabricData({ name: '', colors: '' });
+      setFabricFile(null); setFabricPreview(''); fetchData(); alert('تم إضافة القماش');
+    } catch (err) { alert('خطأ: ' + err.message); }
+    setLoading(false);
+  };
+
+  const handleDelete = async (table, id) => {
+    if(window.confirm('تأكيد الحذف؟')) {
+      await supabase.from(table).delete().eq('id', id);
+      fetchData();
+    }
+  };
+
+  const inputStyle = { width: '100%', padding: '12px', borderRadius: '8px', backgroundColor: '#1e293b', border: '1px solid #334155', color: 'white', marginTop: '5px' };
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#020617', color: 'white', minHeight: '100vh' }} dir="rtl">
-      
-      <div style={{ borderBottom: '1px solid #1e293b', paddingBottom: '15px', marginBottom: '25px' }}>
-        <h1 style={{ color: '#eab308', fontSize: '28px', margin: 0, fontWeight: 'bold' }}>📐 حاسبة المقايسات السريعة والتسعير الذكي الآلي</h1>
-        <p style={{ color: '#94a3b8', fontSize: '12px', margin: '5px 0 0 0' }}>مربوطة تلقائياً بأسعار الخامات الحالية في المخزن لايف</p>
+    <div style={{ padding: '20px', backgroundColor: '#020617', color: 'white', minHeight: '100vh', paddingRight: '280px', fontFamily: '"Cairo", sans-serif' }} dir="rtl">
+      <div style={{ borderBottom: '1px solid #1e293b', paddingBottom: '15px', marginBottom: '20px' }}>
+        <h1 style={{ color: '#eab308', fontSize: '28px', margin: 0, fontWeight: 'bold' }}>🖼️ التحكم الشامل في محتوى الموقع</h1>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr', gap: '25px' }}>
+      {/* شريط التبويبات */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
+        <button onClick={() => setActiveTab('products')} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'products' ? '#6B1D2F' : '#1e293b', color: 'white' }}>🛋️ الموديلات والعروض</button>
+        <button onClick={() => setActiveTab('hero')} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'hero' ? '#6B1D2F' : '#1e293b', color: 'white' }}>🌄 صور الهيدر</button>
+        <button onClick={() => setActiveTab('fabrics')} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'fabrics' ? '#6B1D2F' : '#1e293b', color: 'white' }}>🧵 الأقمشة والألوان</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '25px' }}>
         
-        {/* يمين: مدخلات المقايسة */}
+        {/* ================= فورم الإدخال حسب التبويب النشط ================= */}
         <div style={{ backgroundColor: '#0f172a', padding: '25px', borderRadius: '12px', border: '1px solid #1e293b' }}>
-          <h3 style={{ margin: '0 0 15px 0', color: '#eab308' }}>■ مواصفات تفصيل الموديل (من المخزن)</h3>
-          <form onSubmit={handleCalculateQuote} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            
-            <div>
-              <label style={{ fontSize: '12px', color: '#94a3b8' }}>اختر الخشب الأساسي</label>
-              <select value={quote.wood_id} onChange={e => setQuote({...quote, wood_id: e.target.value})} required style={inputStyle}>
-                <option value="">-- اختر خامة الخشب --</option>
-                {inventoryItems.map(item => (
-                  <option key={item.id} value={item.id}>{item.name} ({item.price} ج.م / للمتر)</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '12px', color: '#94a3b8' }}>اختر الإسفنج / الكثافة</label>
-              <select value={quote.sponge_id} onChange={e => setQuote({...quote, sponge_id: e.target.value})} required style={inputStyle}>
-                <option value="">-- اختر نوع الإسفنج --</option>
-                {inventoryItems.map(item => (
-                  <option key={item.id} value={item.id}>{item.name} ({item.price} ج.م / للمتر)</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '12px', color: '#94a3b8' }}>اختر القماش</label>
-              <select value={quote.fabric_id} onChange={e => setQuote({...quote, fabric_id: e.target.value})} required style={inputStyle}>
-                <option value="">-- اختر نوع القماش --</option>
-                {inventoryItems.map(item => (
-                  <option key={item.id} value={item.id}>{item.name} ({item.price} ج.م / للمتر)</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div>
-                <label style={{ fontSize: '12px', color: '#94a3b8' }}>عدد الأمتار المطلوب</label>
-                <input type="number" step="0.1" placeholder="مثال: 7" value={quote.meters} onChange={e => setQuote({...quote, meters: e.target.value})} required style={inputStyle} />
+          
+          {activeTab === 'products' && (
+            <form onSubmit={handleProductSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <h3 style={{ color: '#eab308', margin: 0 }}>➕ إضافة موديل</h3>
+              <div><label style={{ fontSize: '12px', color: '#94a3b8' }}>الاسم</label><input type="text" value={productData.name} onChange={e => setProductData({...productData, name: e.target.value})} required style={inputStyle} /></div>
+              <div><label style={{ fontSize: '12px', color: '#94a3b8' }}>القسم</label><select value={productData.category} onChange={e => setProductData({...productData, category: e.target.value})} style={inputStyle}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
+              <div><label style={{ fontSize: '12px', color: '#94a3b8' }}>الوصف</label><textarea rows="2" value={productData.description} onChange={e => setProductData({...productData, description: e.target.value})} style={inputStyle}></textarea></div>
+              <div style={{ border: '1px dashed #334155', padding: '10px', borderRadius: '8px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8' }}>الصورة</label>
+                <input type="file" accept="image/*" onChange={async (e) => { if(e.target.files[0]) { setProductPreview(URL.createObjectURL(e.target.files[0])); setProductFile(await resizeImage(e.target.files[0])); } }} style={{ color: 'white', width: '100%' }} />
+                {productPreview && <img src={productPreview} alt="Preview" style={{ height: '60px', marginTop: '10px', borderRadius: '6px' }}/>}
               </div>
-              <div>
-                <label style={{ fontSize: '12px', color: '#94a3b8' }}>مصنعية الصنايعي التقديرية</label>
-                <input type="number" placeholder="ج.م" value={quote.labor_cost} onChange={e => setQuote({...quote, labor_cost: e.target.value})} style={inputStyle} />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input type="text" placeholder="السعر" value={productData.price} onChange={e => setProductData({...productData, price: e.target.value})} style={inputStyle} />
+                <input type="text" placeholder="سعر العرض" value={productData.discount_price} onChange={e => setProductData({...productData, discount_price: e.target.value})} style={inputStyle} />
               </div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '12px', color: '#94a3b8' }}>إجمالي تكلفة الإكسسوارات (خداديات، عجل، أزرار)</label>
-              <input type="number" placeholder="تكلفة الإكسسوارات الإجمالية" value={quote.accessories_cost} onChange={e => setQuote({...quote, accessories_cost: e.target.value})} style={inputStyle} />
-            </div>
-
-            <button type="submit" style={{ backgroundColor: '#eab308', color: 'black', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px', marginTop: '10px' }}>
-              ⚡ احسب التكلفة وسعر البيع لايف
-            </button>
-          </form>
-        </div>
-
-        {/* يسار: شاشة عرض النتيجة */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          {result ? (
-            <div style={{ backgroundColor: '#1e293b', padding: '30px', borderRadius: '12px', border: '2px solid #eab308', textAlign: 'center' }}>
-              <span style={{ fontSize: '14px', color: '#94a3b8' }}>سعر البيع النهائي المقترح للزبون</span>
-              <h1 style={{ fontSize: '45px', color: '#10b981', margin: '10px 0 20px 0', fontWeight: 'bold' }}>{result.sellingPrice} ج.م</h1>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'right', fontSize: '14px', borderTop: '1px solid #334155', paddingTop: '15px' }}>
-                <div>🪵 <strong>الخشب المستخدم:</strong> {result.woodName}</div>
-                <div>🧽 <strong>الإسفنج المستخدم:</strong> {result.spongeName}</div>
-                <div>🧵 <strong>القماش المستخدم:</strong> {result.fabricName}</div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '15px', borderTop: '1px dashed #334155', paddingTop: '15px' }}>
-                <div style={{ textAlign: 'right', fontSize: '13px' }}>
-                  <div style={{ color: '#94a3b8' }}>إجمالي تكلفة الخامات:</div>
-                  <strong style={{ color: 'white' }}>{result.materialsCost} ج.م</strong>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '13px' }}>
-                  <div style={{ color: '#94a3b8' }}>التكلفة الكلية بالمصنعية:</div>
-                  <strong style={{ color: 'white' }}>{result.totalCost} ج.م</strong>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '14px', gridColumn: '1 / span 2', borderTop: '1px solid #334155', paddingTop: '10px', marginTop: '5px' }}>
-                  <div style={{ color: '#34d399' }}>صافي ربح شركة حرير التقريبي (35%):</div>
-                  <strong style={{ color: '#34d399', fontSize: '18px' }}>{result.profit} ج.م</strong>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '50px', color: '#475569' }}>
-              <span style={{ fontSize: '60px' }}>📊</span>
-              <h3>اختر الأصناف الحية من مخزنك وسيقوم السيستم بسحب الأسعار الحالية وحساب المقايسة في التو واللحظة!</h3>
-            </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '8px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={productData.is_offer} onChange={e => setProductData({...productData, is_offer: e.target.checked})} />
+                <span style={{ color: '#eab308', fontSize: '14px', fontWeight: 'bold' }}>تحديد كعرض خاص</span>
+              </label>
+              <button type="submit" disabled={loading} style={{ backgroundColor: '#eab308', padding: '12px', borderRadius: '6px', fontWeight: 'bold' }}>{loading ? '⏳...' : 'حفظ'}</button>
+            </form>
           )}
+
+          {activeTab === 'hero' && (
+            <form onSubmit={handleHeroSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <h3 style={{ color: '#eab308', margin: 0 }}>🌄 إضافة صورة هيدر</h3>
+              <div style={{ border: '1px dashed #334155', padding: '10px', borderRadius: '8px' }}>
+                <input type="file" accept="image/*" onChange={async (e) => { if(e.target.files[0]) { setHeroPreview(URL.createObjectURL(e.target.files[0])); setHeroFile(await resizeImage(e.target.files[0], 1920, 1080)); } }} style={{ color: 'white', width: '100%' }} />
+                {heroPreview && <img src={heroPreview} alt="Preview" style={{ width: '100%', height: '100px', objectFit: 'cover', marginTop: '10px', borderRadius: '6px' }}/>}
+              </div>
+              <button type="submit" disabled={loading} style={{ backgroundColor: '#eab308', padding: '12px', borderRadius: '6px', fontWeight: 'bold' }}>{loading ? '⏳...' : 'حفظ ورفع'}</button>
+            </form>
+          )}
+
+          {activeTab === 'fabrics' && (
+            <form onSubmit={handleFabricSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <h3 style={{ color: '#eab308', margin: 0 }}>🧵 إضافة خامة قماش</h3>
+              <div><label style={{ fontSize: '12px', color: '#94a3b8' }}>اسم القماش</label><input type="text" value={fabricData.name} onChange={e => setFabricData({...fabricData, name: e.target.value})} required style={inputStyle} /></div>
+              <div><label style={{ fontSize: '12px', color: '#94a3b8' }}>الألوان المتاحة (اكتب الأكواد مفصولة بفاصلة مثال: #ff0000,#00ff00)</label><input type="text" value={fabricData.colors} onChange={e => setFabricData({...fabricData, colors: e.target.value})} style={inputStyle} dir="ltr" /></div>
+              <div style={{ border: '1px dashed #334155', padding: '10px', borderRadius: '8px' }}>
+                <input type="file" accept="image/*" onChange={async (e) => { if(e.target.files[0]) { setFabricPreview(URL.createObjectURL(e.target.files[0])); setFabricFile(await resizeImage(e.target.files[0])); } }} style={{ color: 'white', width: '100%' }} />
+                {fabricPreview && <img src={fabricPreview} alt="Preview" style={{ height: '60px', marginTop: '10px', borderRadius: '6px' }}/>}
+              </div>
+              <button type="submit" disabled={loading} style={{ backgroundColor: '#eab308', padding: '12px', borderRadius: '6px', fontWeight: 'bold' }}>{loading ? '⏳...' : 'حفظ'}</button>
+            </form>
+          )}
+
         </div>
 
+        {/* ================= الجداول لعرض الداتا ================= */}
+        <div style={{ backgroundColor: '#0f172a', padding: '25px', borderRadius: '12px', border: '1px solid #1e293b', overflowX: 'auto' }}>
+          
+          {activeTab === 'products' && (
+            <table style={{ width: '100%', textAlign: 'right', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ color: '#94a3b8', borderBottom: '1px solid #1e293b' }}><th>الصورة</th><th>الاسم</th><th>القسم</th><th>إجراء</th></tr></thead>
+              <tbody>{items.map(item => (
+                <tr key={item.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '10px' }}><img src={item.image_url} alt="" style={{ width: '50px', height: '50px', borderRadius: '6px', objectFit: 'cover' }} /></td>
+                  <td style={{ padding: '10px' }}>{item.name} {item.is_offer && '🔥'}</td>
+                  <td style={{ padding: '10px', color: '#94a3b8' }}>{item.category}</td>
+                  <td style={{ padding: '10px' }}><button onClick={() => handleDelete('catalog', item.id)} style={{ background: '#7f1d1d', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>حذف</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+
+          {activeTab === 'hero' && (
+            <table style={{ width: '100%', textAlign: 'right', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ color: '#94a3b8', borderBottom: '1px solid #1e293b' }}><th>الصورة المعروضة بالهيدر</th><th>إجراء</th></tr></thead>
+              <tbody>{heroImages.map(item => (
+                <tr key={item.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '10px' }}><img src={item.image_url} alt="" style={{ width: '150px', height: '70px', borderRadius: '6px', objectFit: 'cover' }} /></td>
+                  <td style={{ padding: '10px' }}><button onClick={() => handleDelete('hero_images', item.id)} style={{ background: '#7f1d1d', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>حذف</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+
+          {activeTab === 'fabrics' && (
+            <table style={{ width: '100%', textAlign: 'right', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ color: '#94a3b8', borderBottom: '1px solid #1e293b' }}><th>الصورة</th><th>الاسم</th><th>الألوان</th><th>إجراء</th></tr></thead>
+              <tbody>{fabrics.map(item => (
+                <tr key={item.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                  <td style={{ padding: '10px' }}><img src={item.image_url} alt="" style={{ width: '50px', height: '50px', borderRadius: '6px', objectFit: 'cover' }} /></td>
+                  <td style={{ padding: '10px' }}>{item.name}</td>
+                  <td style={{ padding: '10px' }}>
+                    <div style={{ display: 'flex', gap: '5px' }}>
+                      {item.colors && item.colors.split(',').map((c, i) => <div key={i} style={{ width: '20px', height: '20px', backgroundColor: c.trim(), borderRadius: '50%', border: '1px solid white' }} />)}
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px' }}><button onClick={() => handleDelete('fabrics', item.id)} style={{ background: '#7f1d1d', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>حذف</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+
+        </div>
       </div>
     </div>
   );
